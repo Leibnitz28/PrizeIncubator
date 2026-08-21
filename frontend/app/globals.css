@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   PrizeIncubator — Design Tokens (Tailwind v4 @theme)
+   Palette: "Ink on paper, one verified-green stamp"
+   See frontend/README.md §1 for rationale.
+   ────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  /* Palette */
+  --color-paper: #EFEDE6;
+  --color-ink: #1B1F2A;
+  --color-ink-soft: #4A4F5E;
+  --color-verified: #1F7A4D;
+  --color-flagged: #B23A2E;
+  --color-line: #D4D0C4;
+
+  /* Typography — three roles, no default pairing */
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-inter);
+  --font-mono: var(--font-plex-mono);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Base styles
+   ────────────────────────────────────────────────────────────── */
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* Tabular monospace numerals — non-negotiable per spec §1 */
+.font-mono,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Focus rings — ink outline, not Tailwind default blue (spec §4)
+   ────────────────────────────────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Receipt perforation — reusable CSS pattern
+   ────────────────────────────────────────────────────────────── */
+
+.receipt-edge-top {
+  background-image: radial-gradient(
+    circle at 8px 0,
+    transparent 5px,
+    var(--color-paper) 5.5px
+  );
+  background-size: 16px 8px;
+  background-repeat: repeat-x;
+  background-position: top center;
+}
+
+.receipt-edge-bottom {
+  background-image: radial-gradient(
+    circle at 8px 8px,
+    transparent 5px,
+    var(--color-paper) 5.5px
+  );
+  background-size: 16px 8px;
+  background-repeat: repeat-x;
+  background-position: bottom center;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Receipt "print-in" animation — clip-path reveal, top-down
+   400-500ms, like paper feeding from a receipt printer.
+   Falls back to instant appearance with prefers-reduced-motion.
+   ────────────────────────────────────────────────────────────── */
+
+@keyframes receipt-print-in {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes stamp-down {
+  0% {
+    transform: rotate(-4deg) scale(1.15);
+    opacity: 0;
+  }
+  60% {
+    transform: rotate(-4deg) scale(0.97);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(-4deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-receipt-print {
+  animation: receipt-print-in 450ms ease-out forwards;
+}
+
+.animate-stamp {
+  animation: stamp-down 150ms ease-out forwards;
+  animation-delay: 450ms;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-receipt-print,
+  .animate-stamp {
+    animation: none !important;
+    clip-path: none !important;
+    opacity: 1 !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Scrollbar styling — subtle, ledger-appropriate
+   ────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-paper);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-soft);
+}
