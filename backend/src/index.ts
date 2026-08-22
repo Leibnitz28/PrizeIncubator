@@ -12,6 +12,7 @@ import compareRouter from './routes/compare.js';
 import settingsRouter from './routes/settings.js';
 
 const app = express();
+const PORT = parseInt(process.env.PORT || '3001', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Middleware
