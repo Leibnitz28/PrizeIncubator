@@ -32,9 +32,13 @@ export async function initDb(): Promise<SqlJsDatabase> {
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       url TEXT NOT NULL UNIQUE,
-      platform TEXT NOT NULL CHECK (platform IN ('amazon', 'flipkart')),
+      platform TEXT NOT NULL CHECK (platform IN ('amazon', 'flipkart', 'meesho', 'shopsy')),
       title TEXT,
       pincode TEXT DEFAULT '177001',
+      product_group_id TEXT,
+      approval_status TEXT DEFAULT 'pending',
+      notification_pref TEXT DEFAULT 'instant',
+      price_threshold REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -66,6 +70,20 @@ export async function initDb(): Promise<SqlJsDatabase> {
       events_json TEXT DEFAULT '[]'
     );
   `);
+
+  // Run dynamic migrations for existing db files (if any)
+  try {
+    db.run(`ALTER TABLE products ADD COLUMN product_group_id TEXT;`);
+  } catch (e) {}
+  try {
+    db.run(`ALTER TABLE products ADD COLUMN approval_status TEXT DEFAULT 'pending';`);
+  } catch (e) {}
+  try {
+    db.run(`ALTER TABLE products ADD COLUMN notification_pref TEXT DEFAULT 'instant';`);
+  } catch (e) {}
+  try {
+    db.run(`ALTER TABLE products ADD COLUMN price_threshold REAL;`);
+  } catch (e) {}
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id, timestamp)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_verdicts_product ON verdicts(product_id, timestamp)`);

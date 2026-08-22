@@ -1,211 +1,232 @@
-# Deal Ledger — Browser Agent for Honest Price Intelligence
+# PrizeIncubator
 
-Built for **SLAB (Self-Learning Agent Browser) Hackathon** @ NIT Hamirpur, hosted by webcmd.
+Honest price intelligence — verified by an autonomous browser agent, not just scraped from HTML. 
 
-> An agent that doesn't just track prices — it acts on live e-commerce sites (Amazon/Flipkart) to verify whether a "deal" is real, and only ever checks out with your explicit approval.
+PrizeIncubator is a real-world e-commerce verification engine that bypasses deceptive marketing. It uses a headless browser agent to physically enter delivery pincodes, apply hidden coupons, and stack bank offers at the checkout stage to determine the **true final price** of a product across Amazon, Flipkart, Meesho, and Shopsy.
 
----
+## Badges
 
-## 1. The Problem
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Puppeteer](https://img.shields.io/badge/Puppeteer-40B5A4?style=for-the-badge&logo=puppeteer&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
-Price trackers exist. Browser extensions exist. Gemini Deep Research can scrape a price in seconds. None of them **act** on the website the way a human shopper does:
+## Overview
 
-- They don't enter your pincode to check real delivery.
-- They don't click "View 12 offers" to see hidden bank/coupon discounts.
-- They don't add the item to cart and apply a coupon to get the *actual* final price.
-- They don't notice when MRP has been inflated to fake a 50%-off discount.
+Modern e-commerce is filled with deceptive pricing: inflated MRPs designed to fake a 50% discount, coupons hidden deep in the checkout flow, and conditional bank offers. Static web scrapers simply grab the "listed price" and fail to capture these real-world economics.
 
-**Deal Ledger** is a browser agent, built on [webcmd](https://github.com/agentrhq/webcmd), that performs these real, multi-step actions on live websites — explores the workflow once, learns it, and replays it reliably — then reports a verdict you can trust, and pings you on Telegram so you can approve or reject before anything is bought.
+**PrizeIncubator solves this by simulating a real human.**
+When you track a product URL, an autonomous browser agent is launched in the background. It navigates to the page, enters your local delivery pincode to verify serviceability, expands collapsed offer panels, applies optimal coupons, and calculates the true final price. Finally, it scores the deal against historical data to detect fake discounts, presenting you with a ranked feed of actionable, human-approved deals.
 
----
+## Features
 
-## 2. What Makes This Different (not "just a scraper")
+### Core Features
+* **Live Agent Visualizer:** Watch the autonomous browser agent execute steps in real-time via a WebSocket-powered timeline (e.g., navigating, clicking, entering pincodes).
+* **True Price Calculation:** Automatically stacks checkout coupons and credit card/bank offers to find the absolute lowest price.
+* **Fake Discount Detection:** Cross-references pricing history to flag "MRP Inflated" scams where the base price was artificially raised right before a sale.
+* **Cross-Platform Arbitrage:** Automatically groups identical products across Amazon, Flipkart, Meesho, and Shopsy to highlight side-by-side pricing disparities.
 
-| Static scraper / Deep Research | Deal Ledger (webcmd agent) |
-|---|---|
-| Reads the HTML that's already there | Clicks, types, waits, and reads what *appears after interaction* |
-| Reports the listed price | Enters pincode → checks real deliverability |
-| Reports the listed discount | Expands hidden bank offers, applies coupon codes, computes the *actual* final price |
-| Breaks silently when a selector changes | Detects failure live, re-explores the page, recovers or reports gracefully |
-| One-shot, stateless | Learns the workflow once (slow, exploratory run), then reuses it as a fast command on future runs |
-| No action taken | Adds to cart, applies coupon, navigates to checkout — and **stops** for human approval before payment |
+### Advanced Features
+* **Human-in-the-Loop Architecture:** Agents are strictly sandboxed. They navigate up to the final checkout review stage, but a human must click "Approve & Open Checkout" to complete the payment. 
+* **Live WebSocket Broadcasts:** Real-time event streaming (`agent_start`, `agent_step`, `agent_verdict`) from the backend to the frontend UI.
+* **Shareable Deal Receipts:** Generates beautiful, exportable PNG receipts for verified deals.
 
-This is the core demo arc: **explore → act → recover from a live failure → human-approved handoff.**
+### User Features
+* **Ranked Deals Feed:** A clean dashboard that sorts verified deals by percentile (lowest first).
+* **Approval Queue:** A dedicated workflow tab for managing, snoozing, or approving verified deals.
+* **Global Settings:** Configure global delivery pincodes, target price thresholds, and agent notification preferences.
+* **Dark/Light Mode:** A fully responsive, modern CSS-variable-based theme system.
 
----
+## Tech Stack
 
-## 3. Architecture
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | Next.js (React), TailwindCSS | High-performance, responsive UI and component rendering. |
+| **Backend** | Node.js, Express | REST API, WebSocket server, and agent orchestration. |
+| **Database** | SQLite (`sql.js`) | Lightweight, persistent local storage for products, history, and verdicts. |
+| **Automation** | Puppeteer, webcmd | Headless browser execution, DOM manipulation, and stealth scraping. |
+| **Real-time** | `ws` (WebSockets) | Live bidirectional streaming of agent execution logs to the frontend. |
 
+## System Architecture
+
+```mermaid
+graph TD
+    Client[Next.js Frontend] -->|REST / POST URL| API[Express Backend API]
+    API -->|Spawns| Agent[Puppeteer Headless Browser]
+    Agent -->|Navigates & Scrapes| Ecommerce[Amazon / Flipkart / Meesho / Shopsy]
+    Agent -->|Yields| Verdict[Verdict Engine]
+    Verdict -->|Writes| DB[(SQLite Database)]
+    Agent -->|Streams Live Events| WS[WebSocket Server]
+    WS -->|Updates Timeline| Client
+    Client -->|Fetches Data| DB
 ```
-                     ┌─────────────────────────┐
-                     │   Next.js Frontend       │
-                     │  (dashboard, history,    │
-                     │   approval queue)        │
-                     └────────────┬─────────────┘
-                                  │ REST / WebSocket
-                     ┌────────────▼─────────────┐
-                     │     Backend API          │
-                     │  (orchestrator, DB,       │
-                     │   verdict engine)          │
-                     └─────┬──────────────┬──────┘
-                           │              │
-              ┌────────────▼───┐    ┌─────▼──────────┐
-              │  webcmd Agent   │    │  Telegram Bot   │
-              │  (browser       │    │  (alerts +      │
-              │   actions)      │    │   approval btns)│
-              └────────────┬────┘    └─────┬───────────┘
-                           │               │
-                 ┌─────────▼───────────────▼─────────┐
-                 │     Amazon / Flipkart (live)       │
-                 └─────────────────────────────────────┘
+
+## Project Structure
+
+```text
+PrizeIncubator/
+├── backend/
+│   ├── src/
+│   │   ├── routes/          # Express API route handlers (products, deals, compare, settings)
+│   │   ├── schema/          # TypeScript interfaces for Verdicts and DB models
+│   │   ├── db.ts            # SQLite database initialization and queries
+│   │   └── index.ts         # Main Express server and WebSocket broadcaster
+│   ├── chrome/              # Local headless Chrome binaries for Puppeteer
+│   └── package.json
+├── frontend/
+│   ├── app/
+│   │   ├── components/      # Modular React components (AgentTimeline, CompareCard, ReceiptStrip)
+│   │   ├── globals.css      # Tailwind directives and CSS variables for Dark/Light themes
+│   │   ├── layout.tsx       # Root Next.js layout and ThemeProvider
+│   │   └── page.tsx         # Main application shell and tab routing
+│   ├── public/              # Static assets and generated illustrations
+│   └── package.json
+└── shared/
+    └── verdict-schema.json  # Shared JSON schema defining the standard Verdict object
 ```
 
-**Flow:**
-1. User adds a product URL (via dashboard or `/track` Telegram command).
-2. webcmd agent explores the product page: extracts price, applies pincode, expands offers, checks stock/variants.
-3. Verdict engine compares against price history and computes: is this a *real* deal (vs inflated-MRP trick), and what's the true final price after coupons/offers.
-4. On a qualifying drop, backend fires a structured Telegram alert with inline buttons.
-5. Agent re-runs periodically using the **learned webcmd command** (fast path) instead of re-exploring from scratch.
-6. On approval tap, agent adds to cart, applies coupon, navigates to checkout, and **stops** — human completes payment manually.
+## Prerequisites
 
----
+Before running the project, ensure you have the following installed:
+* **Node.js** (v18.0.0 or higher)
+* **npm** (v9.0.0 or higher)
+* (Optional) Windows OS for the local pre-packaged Chrome binary, or a standard Chromium installation for Linux/Mac.
 
-## 4. Core Components to Build
+## Installation
 
-### 4.1 webcmd Agent Layer (`/agent`)
-- [ ] Product page explorer: extract title, price, MRP, availability, seller
-- [ ] Pincode entry + delivery date extraction (real DOM interaction, not URL param)
-- [ ] "View offers" expand-and-read (bank offers, coupons)
-- [ ] Add-to-cart + apply-coupon flow → true final price
-- [ ] Variant/seller comparison (if multiple sellers or sizes/colors exist)
-- [ ] Command persistence: save the learned workflow per site so re-runs are fast (webcmd's "explore once, reuse the command")
-- [ ] **Failure handling (critical for scoring):**
-  - Selector/layout change → re-explore instead of hard-crash
-  - Coupon invalid/expired → detect and report, don't silently report old price
-  - Out of stock / pincode not serviceable → detect and adjust verdict
-  - CAPTCHA/bot-block encountered → pause and report, never attempt to bypass
+1. **Clone the repository:**
+   ```bash
+   git clone [ADD YOUR REPOSITORY URL]
+   cd PrizeIncubator
+   ```
 
-### 4.2 Verdict Engine (`/backend`)
-- [ ] Store price history per product (timestamp, price, MRP, source)
-- [ ] Compute: current price vs N-day low/high/percentile
-- [ ] Detect fake-discount pattern (MRP inflated relative to historical price trend)
-- [ ] Combine listed price + coupon + bank offer → true final price
-- [ ] Produce a structured verdict object (see schema below)
+2. **Install Backend Dependencies:**
+   ```bash
+   cd backend
+   npm install
+   ```
 
-### 4.3 Telegram Bot (`/bot`)
-- [ ] `/track <url>` — add a product
-- [ ] `/list` — show tracked products
-- [ ] `/history <product>` — send price-trend chart as an image
-- [ ] Structured alert message with inline buttons: `✅ Approve & Open Checkout` / `🔕 Snooze` / `❌ Not Interested`
-- [ ] Callback handler that resumes the agent flow on approval
+3. **Install Frontend Dependencies:**
+   ```bash
+   cd ../frontend
+   npm install
+   ```
 
-### 4.4 Frontend (`/frontend`)
-See [`frontend/README.md`](./frontend/README.md) for the full design spec — separate doc since it covers visual direction in depth. Next.js + Tailwind, dashboard for tracked products, price-history charts, live agent-run log (for demo visibility), and an approval queue mirroring the Telegram flow.
+## Environment Variables
 
----
+Create a `.env` file in the `backend/` directory:
 
-## 5. Verdict Schema (structured output)
+```env
+# The port the Express API will run on
+PORT=3001
 
-Every agent run should resolve to a single structured object — this is what feeds Telegram, the dashboard, and the demo narrative:
+# Path to the SQLite database file
+DATABASE_PATH=./data/prize-incubator.db
 
+# The URL of the Next.js frontend for CORS policies
+FRONTEND_URL=http://localhost:3000
+```
+
+## Running the Project
+
+You will need two terminal windows to run the frontend and backend concurrently.
+
+**1. Start the Backend API & WebSocket Server:**
+```bash
+cd backend
+npm run dev
+```
+*(Runs on http://localhost:3001)*
+
+**2. Start the Frontend Next.js App:**
+```bash
+cd frontend
+npm run dev
+```
+*(Runs on http://localhost:3000)*
+
+## API Documentation
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/products` | Tracks a new product URL. Spawns the agent and returns a Verdict. |
+| `GET` | `/api/products` | Returns a list of all tracked products and their latest verdicts. |
+| `PATCH` | `/api/products/:id` | Updates specific product preferences (notification threshold, group ID). |
+| `POST` | `/api/products/:id/approval`| Updates the human-in-the-loop approval status (`approve`, `snooze`, `reject`). |
+| `GET` | `/api/deals` | Returns all products sorted by best percentile value. |
+| `GET` | `/api/compare/:groupId` | Returns grouped products for cross-platform arbitrage comparison. |
+| `GET` | `/api/settings` | Returns global system settings and scraping statistics. |
+| `PUT` | `/api/settings` | Updates global settings (e.g., global Pincode). |
+
+### Example Request (`POST /api/products`)
 ```json
 {
-  "product": "Sony WH-1000XM5",
-  "url": "https://...",
-  "platform": "amazon",
-  "timestamp": "2026-08-21T10:00:00Z",
-  "listed_price": 24990,
-  "mrp": 34990,
-  "true_final_price": 22490,
-  "applied_coupon": "SAVE10",
-  "bank_offer": "₹1000 off on HDFC cards",
-  "delivery": {
-    "pincode": "177001",
-    "serviceable": true,
-    "eta": "2026-08-24"
-  },
-  "history": {
-    "90_day_low": 23500,
-    "90_day_high": 36990,
-    "percentile": 8
-  },
-  "verdict": "real_deal",
-  "reasoning": "True final price is 8th percentile of 90-day range — genuinely near the historical low, not an inflated-MRP trick.",
-  "recovery_events": [
-    { "issue": "coupon_expired", "action": "re-checked offers panel, found valid alternate coupon" }
-  ]
+  "url": "https://www.amazon.in/dp/B09V48Z769",
+  "pincode": "177001"
 }
 ```
 
-`recovery_events` matters — it's your live evidence for the technical-depth/recovery score, and it's a great thing to render on the frontend as a timeline during the demo.
+## Database
 
----
+The project utilizes a lightweight **SQLite** database (`sql.js`) stored locally in the `backend/data/` directory. 
 
-## 6. Tech Stack
+**Core Tables:**
+* `products`: Stores tracked URLs, metadata, settings, and cross-platform `product_group_id` links.
+* `price_history`: Appends a new row every time an agent scrapes a product, tracking the listed price vs true final price over time.
+* `verdicts`: Stores the raw JSON output of the agent's decision engine (including applied coupons and reasoning).
 
-- **Browser automation:** [webcmd](https://github.com/agentrhq/webcmd) for exploration + command reuse; Playwright underneath as needed
-- **Agent orchestration:** Claude Code / Codex / whichever LLM harness the team is most fluent in
-- **Backend:** Node.js or Python (FastAPI) — pick based on team comfort; expose REST endpoints for the frontend and a webhook/poll loop for Telegram
-- **Database:** SQLite for hackathon simplicity (Postgres if time allows)
-- **Bot:** `python-telegram-bot` or `node-telegram-bot-api`, polling mode (no public webhook needed)
-- **Frontend:** Next.js + Tailwind CSS (see `frontend/README.md`)
+## Authentication & Security
 
----
+* **Human-in-the-Loop Gateway:** The architecture strictly isolates agent navigation from payments. Automated checkout submission is hard-blocked. The system relies on human authorization (via the UI) to complete transactions.
+* **CORS Restrictions:** The backend enforces strict CORS policies, only accepting requests from the declared `FRONTEND_URL`.
 
-## 7. Hard Rules (from the hackathon brief — non-negotiable)
+## Screenshots / Demo
 
-- Demo must run live, or be a screen recording of a real execution. No mocked/fabricated runs.
-- Use your own accounts on Amazon/Flipkart. Respect platform terms.
-- **Human approval is mandatory** before any payment, message, submission, or deletion action. The agent may navigate to checkout — it must never submit payment.
+![Live Agent Visualizer & Dashboard]([ADD YOUR SCREENSHOT URL HERE])
+*The PrizeIncubator dashboard featuring the Live Agent Timeline, Fake Discount Badges, and Cross-Platform comparisons.*
 
----
+**Live Demo:** [ADD YOUR DEMO URL]  
+**Video Demo:** [ADD YOUR VIDEO URL]
 
-## 8. Demo Script (target: 3–4 minutes)
+## Usage
 
-1. **Cold start:** Give the agent a product URL it hasn't seen. Show webcmd's exploration phase — pincode entry, offer expansion, add-to-cart, coupon application.
-2. **Verdict:** Show the structured "real deal / fake discount" output with true final price.
-3. **Break something live:** Trigger a real failure (expired coupon, or switch pincode to a non-serviceable one) and show the agent detect it and adjust its verdict instead of reporting stale data.
-4. **Second run:** Re-run the same product — show the learned webcmd command executing fast, no re-exploration.
-5. **Telegram:** Alert fires with inline buttons. Tap approve. Agent navigates to checkout and **stops**.
+1. **Configure Location:** Navigate to the "Settings" tab and enter your local delivery Pincode.
+2. **Track a Deal:** Navigate to the "Deals" or "Ledger" tab and paste a product URL from Amazon, Flipkart, Meesho, or Shopsy into the Track bar.
+3. **Watch the Agent:** The Live Agent Visualizer on the right will instantly stream the headless browser's actions (e.g., "Navigating to Amazon", "Applying Coupon: AUDIO500").
+4. **Review Verdict:** A Receipt Strip will generate, showing the true final price and flagging if the MRP was artificially inflated.
+5. **Approve:** Click "Approve & Open Checkout" to securely finalize the purchase yourself.
 
----
+## Known Issues / Limitations
 
-## 9. Team Task Split (suggested, adjust to team size)
+* **Headless Detection:** Aggressive bot-protection (e.g., CAPTCHAs) on certain platforms may occasionally block the Puppeteer agent from completing a full run. The system utilizes `puppeteer-extra-plugin-stealth` to mitigate this, but failures can still occur.
+* **Payment Automation:** By design, the agent does not store or process payment information.
 
-| Area | Owns |
-|---|---|
-| webcmd agent + recovery logic | Person A (+ B) |
-| Verdict engine + DB | Person B |
-| Telegram bot + callback wiring | Person C |
-| Frontend dashboard | Person D |
+## Future Improvements
 
-If solo or duo: build the agent + verdict engine + Telegram first (this is what's judged most heavily — 30 + 20 = 50 of 100 points), and treat the frontend as a lighter-weight demo surface.
+* **Already Implemented:** Multi-platform support (Amazon, Flipkart, Meesho, Shopsy), Cross-platform price comparison, SQLite persistence.
+* **Planned Improvements:** 
+  - Automated recurring chron-job scraping to build historical price charts in the background.
+  - Proxy rotation integration to further bypass headless browser blocks.
 
----
+## Contributing
 
-## 10. Setup
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-```bash
-git clone <this-repo>
-cd deal-ledger
+## License
 
-# agent + backend
-cd backend && npm install   # or pip install -r requirements.txt
+[ADD LICENSE INFORMATION]
 
-# webcmd
-# follow https://github.com/agentrhq/webcmd?utm_source=luma
+## Authors / Contributors
 
-# frontend
-cd ../frontend && npm install && npm run dev
+[ADD CONTRIBUTORS]
 
-# telegram bot
-cd ../bot && npm install
-# set TELEGRAM_BOT_TOKEN in .env
-```
+## Acknowledgements
 
----
-
-## 11. Resources
-
-- webcmd: https://github.com/agentrhq/webcmd
-- SLAB hackathon community: WhatsApp group (see event page)
+* **[Puppeteer Extra Stealth](https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth):** For robust headless browser evasion.
+* **[TailwindCSS](https://tailwindcss.com/):** For flexible, modern UI styling.

@@ -48,3 +48,7 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# Local Chrome binaries & testing caches
+chrome/
+backend/chrome/

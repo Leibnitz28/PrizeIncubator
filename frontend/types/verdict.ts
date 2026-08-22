@@ -23,11 +23,13 @@ export type VerdictLabel = 'real_deal' | 'mrp_inflated' | 'price_unchanged';
 export interface Verdict {
   product: string;
   url: string;
-  platform: 'amazon' | 'flipkart';
+  platform: 'amazon' | 'flipkart' | 'meesho' | 'shopsy';
   timestamp: string;
   listed_price: number;
   mrp: number;
   true_final_price: number;
+  coupon_amount: number;
+  bank_amount: number;
   applied_coupon: string | null;
   bank_offer: string | null;
   delivery: DeliveryInfo;

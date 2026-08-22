@@ -35,8 +35,23 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       className={`${fraunces.variable} ${inter.variable} ${plexMono.variable} h-full`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-paper text-ink font-body antialiased">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            try {
+              var theme = localStorage.getItem('theme');
+              if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch (e) {}
+          })();
+        ` }} />
+      </head>
+      <body className="min-h-full flex flex-col bg-paper text-ink font-body antialiased transition-colors duration-200">
         {children}
       </body>
     </html>

@@ -6,14 +6,32 @@
    See frontend/README.md §1 for rationale.
    ────────────────────────────────────────────────────────────── */
 
-@theme inline {
-  /* Palette */
+:root {
   --color-paper: #EFEDE6;
   --color-ink: #1B1F2A;
   --color-ink-soft: #4A4F5E;
   --color-verified: #1F7A4D;
   --color-flagged: #B23A2E;
   --color-line: #D4D0C4;
+}
+
+html.dark {
+  --color-paper: #12141C;
+  --color-ink: #EFEDE6;
+  --color-ink-soft: #8C92A4;
+  --color-verified: #2EBF6E;
+  --color-flagged: #E05A4E;
+  --color-line: #2A2D3A;
+}
+
+@theme inline {
+  /* Palette */
+  --color-paper: var(--color-paper);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-verified: var(--color-verified);
+  --color-flagged: var(--color-flagged);
+  --color-line: var(--color-line);
 
   /* Typography — three roles, no default pairing */
   --font-display: var(--font-fraunces);
@@ -140,4 +158,30 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-ink-soft);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Inflated MRP Warning Badge styling
+   ────────────────────────────────────────────────────────────── */
+
+.verdict-badge-inflated {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(178, 58, 46, 0.05),
+    rgba(178, 58, 46, 0.05) 8px,
+    rgba(178, 58, 46, 0.15) 8px,
+    rgba(178, 58, 46, 0.15) 16px
+  ) !important;
+  border-width: 2.5px !important;
+  border-style: double !important;
+}
+
+.dark .verdict-badge-inflated {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(224, 90, 78, 0.1),
+    rgba(224, 90, 78, 0.1) 8px,
+    rgba(224, 90, 78, 0.2) 8px,
+    rgba(224, 90, 78, 0.2) 16px
+  ) !important;
 }

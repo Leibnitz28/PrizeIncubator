@@ -29,7 +29,7 @@
     },
     "platform": {
       "type": "string",
-      "enum": ["amazon", "flipkart"],
+      "enum": ["amazon", "flipkart", "meesho", "shopsy"],
       "description": "E-commerce platform identifier"
     },
     "timestamp": {

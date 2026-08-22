@@ -1,228 +1,331 @@
 "use client";
 
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { Verdict } from "@/types/verdict";
+import { NavRail, MobileNav, type TabId } from "./components/NavRail";
+import { TrackForm } from "./components/TrackForm";
+import { ReceiptStrip, type TrackedProduct } from "./components/ReceiptStrip";
+import { ThemeToggle } from "./components/ThemeToggle";
+import { AgentTimeline } from "./components/AgentTimeline";
+import { DealsFeed } from "./components/DealsFeed";
+import { ApprovalQueue } from "./components/ApprovalQueue";
+import { CompareCard } from "./components/CompareCard";
+import { SettingsPage } from "./components/SettingsPage";
+import { EmptyState } from "./components/EmptyState";
+import { ErrorState } from "./components/ErrorState";
+
+interface AgentLogMessage {
+  id: string;
+  type: string;
+  message: string;
+  status: "info" | "success" | "warning" | "error";
+  timestamp: string;
+}
+
+import { API_BASE, getWsUrl } from "./config";
+
 export default function Home() {
+  const [pincode, setPincode] = useState("177001");
+  const [products, setProducts] = useState<TrackedProduct[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("deals");
+  const [refreshDealsTrigger, setRefreshDealsTrigger] = useState(0);
+  const [logs, setLogs] = useState<AgentLogMessage[]>([]);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [approvedIds, setApprovedIds] = useState<number[]>([]);
+  
+  const wsRef = useRef<WebSocket | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // ── WebSocket connection ──
+  useEffect(() => {
+    let ws: WebSocket;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
+    const connectWs = () => {
+      try {
+        const wsUrl = getWsUrl();
+        ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setWsConnected(true);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "connected") return;
+
+            setLogs((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                type: data.type || "agent_step",
+                message: data.message || "",
+                status: data.status || "info",
+                timestamp: new Date(data.timestamp || Date.now()).toLocaleTimeString("en-IN", { hour12: false }),
+              },
+            ]);
+          } catch {
+            // ignore malformed messages
+          }
+        };
+
+        ws.onclose = () => {
+          setWsConnected(false);
+          reconnectTimer = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          setWsConnected(false);
+        };
+      } catch {
+        // connection failed, will retry
+      }
+    };
+
+    connectWs();
+    return () => {
+      clearTimeout(reconnectTimer);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
+  // ── Fetch products ──
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products`);
+      if (res.ok) {
+        const data = await res.json();
+        setProducts(data);
+      }
+    } catch {
+      // silently fail — servers may not be up yet
+    } finally {
+      setInitialLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // ── Auto-scroll log ──
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
+  // ── Delete product ──
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${id}`, { method: "DELETE" });
+      if (res.ok) setProducts((prev) => prev.filter((p) => p.id !== id));
+    } catch {
+      // ignore
+    }
+  };
+
+  // ── Approve product ──
+  const handleApprove = (product: TrackedProduct) => {
+    setApprovedIds((prev) => [...prev, product.id]);
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        type: "approval",
+        message: `✓ Human approved checkout for: ${product.title || product.url}`,
+        status: "success",
+        timestamp: new Date().toLocaleTimeString("en-IN", { hour12: false }),
+      },
+    ]);
+    window.open(product.url, "_blank");
+  };
+
+  // ── Filter by tab ──
+  const displayedProducts = products.filter((p) => {
+    if (activeTab === "approvals") return p.verdict?.verdict === "real_deal";
+    return true;
+  });
+
+  const approvalCount = products.filter((p) => p.verdict?.verdict === "real_deal").length || undefined;
+
   return (
     <div className="flex min-h-screen">
-      {/* ── Left Rail — icon-only nav, ink background ── */}
-      <nav
-        className="hidden md:flex flex-col items-center w-[72px] min-h-screen bg-ink py-6 gap-6"
-        aria-label="Main navigation"
-      >
-        {/* Ledger (home) — active */}
-        <a
-          href="/"
-          className="group flex items-center justify-center w-10 h-10 rounded-sm text-paper hover:bg-paper/10 transition-colors"
-          aria-label="Ledger"
-          aria-current="page"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-paper"
-          >
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
-            <path d="M8 7h6" />
-            <path d="M8 11h8" />
-          </svg>
-        </a>
+      {/* ── Left Rail (NavRail) ── */}
+      <NavRail
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        approvalCount={approvalCount}
+        themeToggle={<ThemeToggle />}
+      />
 
-        {/* History */}
-        <a
-          href="#history"
-          className="group flex items-center justify-center w-10 h-10 rounded-sm text-ink-soft hover:bg-paper/10 hover:text-paper transition-colors"
-          aria-label="History"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 3v5h5" />
-            <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
-            <path d="M12 7v5l4 2" />
-          </svg>
-        </a>
-
-        {/* Approvals */}
-        <a
-          href="#approvals"
-          className="group flex items-center justify-center w-10 h-10 rounded-sm text-ink-soft hover:bg-paper/10 hover:text-paper transition-colors"
-          aria-label="Approvals"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M9 11l3 3L22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-          </svg>
-        </a>
-
-        {/* Settings — pushed to bottom */}
-        <div className="mt-auto">
-          <a
-            href="#settings"
-            className="group flex items-center justify-center w-10 h-10 rounded-sm text-ink-soft hover:bg-paper/10 hover:text-paper transition-colors"
-            aria-label="Settings"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </a>
-        </div>
-      </nav>
-
-      {/* ── Main Column — stacked ledger, single scrollable column ── */}
-      <main className="flex-1 min-h-screen overflow-y-auto">
+      {/* ── Main Column ── */}
+      <main className="flex-1 min-h-screen overflow-y-auto pb-20 md:pb-10">
         <div className="max-w-2xl mx-auto px-6 py-10">
-          {/* Header */}
-          <header className="mb-10">
-            <h1 className="font-display text-3xl tracking-tight text-ink">
-              PrizeIncubator
-            </h1>
-            <p className="mt-2 text-ink-soft font-body text-sm">
+          <header className="mb-8">
+            <div className="flex items-baseline justify-between">
+              <h1 className="font-display text-3xl tracking-tight text-ink dark:text-paper">PrizeIncubator</h1>
+              <span className="font-mono text-xs text-ink-soft dark:text-paper/60 bg-white dark:bg-ink/30 px-2 py-0.5 border border-line dark:border-line/20 rounded">
+                PIN: {pincode}
+              </span>
+            </div>
+            <p className="mt-2 text-ink-soft dark:text-paper/60 font-body text-sm">
               Honest price intelligence — verified by a browser agent, not scraped from HTML.
             </p>
           </header>
 
-          {/* Track Form — single field, single button, no card chrome */}
-          <form
-            className="flex gap-3 mb-10"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            <input
-              id="track-url-input"
-              type="url"
-              placeholder="Paste an Amazon or Flipkart product URL"
-              className="flex-1 px-4 py-2.5 bg-white border border-line rounded-sm font-body text-sm text-ink placeholder:text-ink-soft/60 focus-visible:outline-ink focus-visible:outline-2 focus-visible:outline-offset-0"
-              aria-label="Product URL"
+          {/* Track Form (only visible in ledger/deals view) */}
+          {(activeTab === "ledger" || activeTab === "deals") && (
+            <TrackForm
+              pincode={pincode}
+              onTracked={() => {
+                fetchProducts();
+                setRefreshDealsTrigger(prev => prev + 1);
+              }}
+              onError={setError}
             />
-            <button
-              id="track-submit-btn"
-              type="submit"
-              className="px-5 py-2.5 bg-ink text-paper font-body text-sm font-medium rounded-sm hover:bg-ink/90 transition-colors"
-            >
-              Track
-            </button>
-          </form>
+          )}
 
-          {/* Divider */}
-          <div className="border-t border-line mb-10" />
-
-          {/* Empty state — exact copy from spec §3 */}
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 mb-6 flex items-center justify-center border-2 border-dashed border-line rounded-sm">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-ink-soft/50"
-              >
-                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
-              </svg>
+          {error && (
+            <div className="mb-6 p-3 bg-flagged/10 border border-flagged/30 text-flagged rounded text-sm font-body">
+              {error}
             </div>
-            <p className="text-ink-soft font-body text-sm leading-relaxed max-w-xs">
-              Nothing on the ledger yet. Paste a product URL to start tracking.
-            </p>
+          )}
+
+          {/* Section header */}
+          <div className="border-t border-line dark:border-line/20 mb-8 flex items-center justify-between pt-2">
+            <span className="font-mono text-xs text-ink-soft dark:text-paper/50 uppercase tracking-wider">
+              {activeTab === "deals" && `Top Deals Feed`}
+              {activeTab === "ledger" && `Ledger Entries (${displayedProducts.length})`}
+              {activeTab === "compare" && `Cross-Platform Intelligence`}
+              {activeTab === "history" && "Price History Records"}
+              {activeTab === "approvals" && `Ready for Approval (${displayedProducts.length})`}
+              {activeTab === "settings" && "Configuration & Tracked Products"}
+            </span>
+            {products.length > 0 && (activeTab === "ledger" || activeTab === "history") && (
+              <button onClick={fetchProducts} className="font-mono text-xs text-ink dark:text-paper hover:underline cursor-pointer">
+                Refresh
+              </button>
+            )}
           </div>
+
+          {/* Settings Tab */}
+          {activeTab === "settings" && (
+            <SettingsPage
+              pincode={pincode}
+              onPincodeChange={setPincode}
+              products={products}
+              onRefreshProducts={fetchProducts}
+              onDeleteProduct={handleDelete}
+            />
+          )}
+
+          {/* Compare Tab */}
+          {activeTab === "compare" && (
+            <CompareCard onApprove={handleApprove} />
+          )}
+
+          {/* Deals Feed */}
+          {activeTab === "deals" && (
+            <DealsFeed
+              approvedIds={approvedIds}
+              onApprove={handleApprove}
+              onDelete={handleDelete}
+              onRefreshTrigger={refreshDealsTrigger}
+            />
+          )}
+
+          {/* Approvals Queue */}
+          {activeTab === "approvals" && (
+            <ApprovalQueue onRefreshTrigger={refreshDealsTrigger} />
+          )}
+
+          {/* History Tab */}
+          {activeTab === "history" && (
+            <div className="space-y-6">
+              {products.length === 0 ? (
+                <EmptyState type="history" />
+              ) : (
+                <div className="space-y-6">
+                  {products.map((p) => {
+                    const v = p.verdict;
+                    return (
+                      <div key={p.id} className="bg-white dark:bg-[#1C1F2E] border border-line dark:border-line/20 rounded-sm p-5 font-mono text-xs">
+                        <div className="flex items-start justify-between gap-4 pb-3 border-b border-line/40 dark:border-line/10">
+                          <div>
+                            <span className="uppercase text-[10px] font-bold text-ink-soft dark:text-paper/50">{p.platform}</span>
+                            <h3 className="font-display text-base text-ink dark:text-paper mt-0.5">{p.title || p.url}</h3>
+                          </div>
+                          <span className="text-base font-bold text-ink dark:text-paper">
+                            ₹{v ? v.true_final_price.toLocaleString("en-IN") : "—"}
+                          </span>
+                        </div>
+                        {v && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-1 text-[11px] text-ink-soft dark:text-paper/60">
+                            <div>MRP: <span className="font-semibold text-ink dark:text-paper">₹{v.mrp.toLocaleString("en-IN")}</span></div>
+                            <div>90-Day Low: <span className="font-semibold text-verified dark:text-[#3CD070]">₹{v.history["90_day_low"].toLocaleString("en-IN")}</span></div>
+                            <div>90-Day High: <span className="font-semibold text-ink dark:text-paper">₹{v.history["90_day_high"].toLocaleString("en-IN")}</span></div>
+                            <div>Percentile: <span className="font-semibold text-ink dark:text-paper">{v.history.percentile}th</span></div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ledger list */}
+          {activeTab === "ledger" && (
+            <div className="space-y-8">
+              {initialLoading ? (
+                /* Loading skeleton */
+                <div className="space-y-6">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-white dark:bg-[#1C1F2E] border border-line dark:border-line/20 rounded-sm p-6 animate-pulse">
+                      <div className="h-5 bg-line/60 dark:bg-line/20 rounded w-3/4 mb-3" />
+                      <div className="h-3 bg-line/40 dark:bg-line/10 rounded w-1/2 mb-6" />
+                      <div className="space-y-2">
+                        <div className="h-3 bg-line/40 dark:bg-line/10 rounded w-full" />
+                        <div className="h-3 bg-line/40 dark:bg-line/10 rounded w-full" />
+                        <div className="h-4 bg-line/60 dark:bg-line/20 rounded w-2/3 mt-4" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : displayedProducts.length === 0 ? (
+                <EmptyState type="ledger" />
+              ) : (
+                displayedProducts.map((product) => (
+                  <ReceiptStrip
+                    key={product.id}
+                    product={product}
+                    isApproved={approvedIds.includes(product.id)}
+                    onApprove={() => handleApprove(product)}
+                    onDelete={() => handleDelete(product.id)}
+                  />
+                ))
+              )}
+            </div>
+          )}
         </div>
       </main>
 
-      {/* ── Right Rail — AgentRunLog, desktop only ── */}
-      <aside
-        className="hidden lg:flex flex-col w-80 min-h-screen bg-ink border-l border-ink-soft/20"
-        aria-label="Agent run log"
-      >
-        <div className="px-4 py-4 border-b border-ink-soft/20">
-          <h2 className="font-mono text-xs font-medium text-paper/70 uppercase tracking-wider">
-            Agent Run Log
-          </h2>
-        </div>
+      {/* ── Right Rail — Agent Run Log (Timeline) ── */}
+      <AgentTimeline
+        logs={logs}
+        wsConnected={wsConnected}
+        onClear={() => setLogs([])}
+      />
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {/* Empty log state */}
-          <div className="flex items-center gap-2 text-ink-soft/50">
-            <div className="w-1.5 h-1.5 rounded-full bg-ink-soft/30" />
-            <span className="font-mono text-xs">
-              Waiting for agent activity…
-            </span>
-          </div>
-        </div>
-
-        {/* Connection status bar */}
-        <div className="px-4 py-3 border-t border-ink-soft/20 flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-ink-soft/40" />
-          <span className="font-mono text-[10px] text-ink-soft/40 uppercase tracking-wider">
-            Disconnected
-          </span>
-        </div>
-      </aside>
-
-      {/* ── Mobile Bottom Bar — replaces left rail on small screens ── */}
-      <nav
-        className="fixed bottom-0 left-0 right-0 md:hidden bg-ink flex justify-around items-center h-14 z-50"
-        aria-label="Mobile navigation"
-      >
-        <a
-          href="/"
-          className="flex items-center justify-center w-12 h-12 text-paper"
-          aria-label="Ledger"
-          aria-current="page"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
-            <path d="M8 7h6" /><path d="M8 11h8" />
-          </svg>
-        </a>
-        <a href="#history" className="flex items-center justify-center w-12 h-12 text-ink-soft" aria-label="History">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" />
-          </svg>
-        </a>
-        <a href="#approvals" className="flex items-center justify-center w-12 h-12 text-ink-soft" aria-label="Approvals">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-          </svg>
-        </a>
-        <a href="#settings" className="flex items-center justify-center w-12 h-12 text-ink-soft" aria-label="Settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </a>
-      </nav>
+      {/* ── Mobile Bottom Bar (MobileNav) ── */}
+      <MobileNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+      />
     </div>
   );
 }

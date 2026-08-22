@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: prize-incubator-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: DATABASE_PATH
+        value: ./data/prize-incubator.db
+      - key: FRONTEND_URL
+        value: "*"

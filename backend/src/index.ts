@@ -7,19 +7,37 @@ import { initDb } from './db.js';
 import productsRouter from './routes/products.js';
 import verdictsRouter from './routes/verdicts.js';
 import agentRouter from './routes/agent.js';
+import dealsRouter from './routes/deals.js';
+import compareRouter from './routes/compare.js';
+import settingsRouter from './routes/settings.js';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3001', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Middleware
-app.use(cors({ origin: FRONTEND_URL }));
+const allowedOrigins = FRONTEND_URL.split(',').map((u) => u.trim());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (FRONTEND_URL === '*' || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.includes('localhost')) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Permissive fallback for deployment previews
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Routes
 app.use('/api/products', productsRouter);
 app.use('/api/verdicts', verdictsRouter);
 app.use('/api/agent', agentRouter);
+app.use('/api/deals', dealsRouter);
+app.use('/api/compare', compareRouter);
+app.use('/api/settings', settingsRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
